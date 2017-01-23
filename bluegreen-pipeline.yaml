@@ -1,0 +1,72 @@
+apiVersion: v1
+kind: BuildConfig
+metadata:
+  annotations:
+    pipeline.alpha.openshift.io/uses: '[{"name": "bluegreen", "namespace": "", "kind": "DeploymentConfig"}]'
+  creationTimestamp: null
+  labels:
+    app: bluegreen-pipeline
+    name: bluegreen-pipeline
+  name: bluegreen-pipeline    
+spec:
+  strategy:
+    jenkinsPipelineStrategy:
+      jenkinsfile: |-
+        #!groovy
+        def appName="bluegreen"
+        def project="bluegreen"
+        def tag="blue"
+        def altTag="green"        
+
+        node {
+          stage("Initialize") {
+            sh "oc get route ${appName} -n ${project} -o jsonpath='{ .spec.to.name }' > activeservice"
+            activeService = readFile('activeservice').trim()
+            if (activeService == "blue") {
+              tag = "green"
+              altTag = "blue"
+            }
+            sh "oc get route ${tag} -n ${project} -o jsonpath='{ .spec.host }' > routehost"
+            routeHost = readFile('routehost').trim()
+          }
+
+          stage("Build") {
+            echo "building tag ${tag}"
+            openshiftBuild buildConfig: "${tag}", showBuildLogs: "true"
+          }
+
+          stage("Deploy Test") {
+            openshiftTag srcStream: "${tag}", srcTag: 'latest', destinationStream: "${tag}", destinationTag: 'latest'
+            openshiftVerifyDeployment deploymentConfig: "${tag}"
+          }
+
+          stage("Test") {
+            input message: "Test deployment: http://${routeHost}. Approve?", id: "approval"
+          }
+
+          stage("Go Live") {
+            def patch1 = $/oc patch route/bluegreen -p $'{\"spec\":{\"to\":{\"name\":\"${tag}\"}}}$' -n ${project}/$
+            sh patch1
+          }
+
+          stage("Rollback") {
+            sh "oc get route ${altTag} -n ${project} -o jsonpath='{ .spec.host }' > routehost"
+            routeHost = readFile('routehost').trim()
+            def patch2 = $/oc patch route/bluegreen -p $'{\"spec\":{\"to\":{\"name\":\"${altTag}\"}}}$' -n ${project}/$            
+            try {
+              input message: "Rollback deployment: http://${routeHost}. Approve?", id: "approval"
+              echo "rolling back to ${tag}"
+              sh patch2
+            } catch (error) {
+              echo "rollback aborted"
+            }
+          }
+        }
+    type: JenkinsPipeline
+  triggers:
+  - github:
+      secret: secret101
+    type: GitHub
+  - generic:
+      secret: secret101
+    type: Generic
