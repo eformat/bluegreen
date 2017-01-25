@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: BuildConfig
+metadata:
+  annotations:
+    pipeline.alpha.openshift.io/uses: '[{"name": "bluegreen", "namespace": "", "kind":
+      "DeploymentConfig"}]'
+  creationTimestamp: null
+  labels:
+    app: ab-pipeline
+    name: ab-pipeline
+  name: ab-pipeline
+spec:
+  output: {}
+  postCommit: {}
+  resources: {}
+  runPolicy: Serial
+  source:
+    type: None
+  strategy:
+    jenkinsPipelineStrategy:
+      jenkinsfile: "#!groovy\ndef appName=\"bluegreen\"\ndef project=\"bluegreen\"\n\nnode
+        {\n  stage(\"Set Route Backends\") {\n    def userInput = input(\n    id:
+        'userInput', message: 'Let\\'s Adjust Routes ?', parameters: [\n        [$class:
+        'TextParameterDefinition', defaultValue: '100', description: 'Blue', name:
+        'blue'],\n        [$class: 'TextParameterDefinition', defaultValue: '0', description:
+        'Green', name: 'green']\n    ]) \n    echo (\"Blue: \"+userInput['blue'])\n
+        \   echo (\"Green: \"+userInput['green'])\n    \n    sh \"oc set -n ${project}
+        route-backends ${appName} blue=\"+userInput['blue']+\" green=\"+userInput['green']\n
+        \ }\n}"
+    type: JenkinsPipeline
+  triggers:
+  - github:
+      secret: secret101
+    type: GitHub
+  - generic:
+      secret: secret101
+    type: Generic
+status:
+  lastVersion: 0
