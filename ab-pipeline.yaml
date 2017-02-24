@@ -18,15 +18,17 @@ spec:
     type: None
   strategy:
     jenkinsPipelineStrategy:
-      jenkinsfile: "#!groovy\ndef appName=\"bluegreen\"\ndef project=\"bluegreen\"\n\nnode
-        {\n  stage(\"Set Route Backends\") {\n    def userInput = input(\n    id:
-        'userInput', message: 'Let\\'s Adjust Routes ?', parameters: [\n        [$class:
-        'TextParameterDefinition', defaultValue: '100', description: 'Blue', name:
-        'blue'],\n        [$class: 'TextParameterDefinition', defaultValue: '0', description:
-        'Green', name: 'green']\n    ]) \n    echo (\"Blue: \"+userInput['blue'])\n
+      jenkinsfile: "#!groovy\ndef appName=\"bluegreen\"\n\nnode {\n  def project =
+        getProjectName()\n  \n  stage(\"Set Route Backends\") {\n    def userInput
+        = input(\n    id: 'userInput', message: 'Let\\'s Adjust Routes ?', parameters:
+        [\n        [$class: 'TextParameterDefinition', defaultValue: '100', description:
+        'Blue', name: 'blue'],\n        [$class: 'TextParameterDefinition', defaultValue:
+        '0', description: 'Green', name: 'green']\n    ]) \n    echo (\"Blue: \"+userInput['blue'])\n
         \   echo (\"Green: \"+userInput['green'])\n    \n    sh \"oc set -n ${project}
         route-backends ${appName} blue=\"+userInput['blue']+\" green=\"+userInput['green']\n
-        \ }\n}"
+        \ }\n}\n\ndef getProjectName(){\n    def cmd1 = $/project=$(oc get project
+        -o name);echo $${project##project/} > projectName/$\n    sh cmd1\n    name
+        = readFile('projectName').trim()\n    sh 'rm projectName'\n    return name\n}\n"
     type: JenkinsPipeline
   triggers:
   - github:
