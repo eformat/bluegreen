@@ -27,7 +27,7 @@ spec:
         \   echo (\"Green: \"+userInput['green'])\n    \n    sh \"oc set -n ${project}
         route-backends ${appName} blue=\"+userInput['blue']+\" green=\"+userInput['green']\n
         \ }\n}\n\ndef getProjectName(){\n    def cmd1 = $/project=$(oc get project
-        -o name);echo $${project##project/} > projectName/$\n    sh cmd1\n    name
+        -o name);echo $${project##project*/} > projectName/$\n    sh cmd1\n    name
         = readFile('projectName').trim()\n    sh 'rm projectName'\n    return name\n}\n"
     type: JenkinsPipeline
   triggers:
