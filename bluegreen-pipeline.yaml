@@ -40,7 +40,7 @@ spec:
         http://${routeHost}. Approve?\", id: \"approval\"\n      echo \"rolling back
         to ${tag}\"\n      sh patch2\n    } catch (error) {\n      echo \"rollback
         aborted\"\n    }\n  }\n}\n\ndef getProjectName(){\n    def cmd1 = $/project=$(oc
-        get project -o name);echo $${project##project/} > projectName/$\n    sh cmd1\n
+        get project -o name);echo $${project##project*/} > projectName/$\n    sh cmd1\n
         \   name = readFile('projectName').trim()\n    sh 'rm projectName'\n    return
         name\n}\n"
     type: JenkinsPipeline
