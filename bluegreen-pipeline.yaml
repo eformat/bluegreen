@@ -18,69 +18,106 @@ spec:
     type: None
   strategy:
     jenkinsPipelineStrategy:
-      jenkinsfile: |-
-              #!groovy
-              try {
-                  timeout(time: 20, unit: 'MINUTES') {
-                      def appName = "bluegreen"
-                      def tag = "blue"
-                      def altTag = "green"
+      jenkinsfile: |
+        #!groovy
+        pipeline {
+            environment {
+                def appName = "bluegreen"
+                def tag = "blue"
+                def altTag = "green"
+            }
+            options {
+                // set a timeout of 20 minutes for this pipeline
+                timeout(time: 20, unit: 'MINUTES')
+            }
+            agent {
+                node {
+                    label 'nodejs'
+                }
+            }
+            stages {
+                stage("Initialize") {
+                    steps {
+                        script {
+                            openshift.withProject(env.PROJECT_NAME) {
+                                sh "oc get route ${appName} -o jsonpath='{ .spec.to.name }' > activeservice"
+                                activeService = readFile('activeservice').trim()
+                                if (activeService == "blue") {
+                                    tag = "green"
+                                    altTag = "blue"
+                                }
+                                sh "oc get route ${tag} -o jsonpath='{ .spec.host }' > routehost"
+                                routeHost = readFile('routehost').trim()
+                            }
+                        }
+                    }
+                }
 
-                      node {
-                          project = env.PROJECT_NAME
+                stage('build') {
+                    steps {
+                        script {
+                            openshift.withProject(env.PROJECT_NAME) {
+                                echo "building tag ${tag}"
+                                def bld = openshift.startBuild("${tag}")
+                                bld.untilEach {
+                                    return it.object().status.phase == "Running"
+                                }
+                                bld.logs('-f')
+                            }
+                        }
+                    }
+                }
 
-                          stage("Initialize") {
-                              sh "oc get route ${appName} -n ${project} -o jsonpath='{ .spec.to.name }' > activeservice"
-                              activeService = readFile('activeservice').trim()
-                              if (activeService == "blue") {
-                                  tag = "green"
-                                  altTag = "blue"
-                              }
-                              sh "oc get route ${tag} -n ${project} -o jsonpath='{ .spec.host }' > routehost"
-                              routeHost = readFile('routehost').trim()
-                          }
+                stage('deploy') {
+                    steps {
+                        script {
+                            openshift.withProject(env.PROJECT_NAME) {
+                                def dc = openshift.selector('dc', "${tag}")
+                                dc.rollout().status("-w")
+                            }
+                        }
+                    }
+                }
 
-                          stage("Build") {
-                              echo "building tag ${tag}"
-                              openshiftBuild(buildConfig: "${tag}", showBuildLogs: "true")
-                          }
+                stage("Test") {
+                    steps {
+                        script {
+                            input message: "Test deployment: http://${routeHost}. Approve?", id: "approval"
+                        }
+                    }
+                }
 
-                          stage("Deploy Test") {
-                              openshiftTag(srcStream: "${tag}", srcTag: 'latest', destinationStream: "${tag}", destinationTag: 'latest')
-                              openshiftVerifyDeployment(deploymentConfig: "${tag}")
-                          }
+                stage("Go Live") {
+                    steps {
+                        script {
+                            openshift.withProject(env.PROJECT_NAME) {
+                                def patch1 = $/oc patch route/bluegreen -p $'{\"spec\":{\"to\":{\"name\":\"${tag}\"}}}$'/$
+                                sh patch1
+                            }
+                        }
+                    }
+                }
 
-                          stage("Test") {
-                              input message: "Test deployment: http://${routeHost}. Approve?", id: "approval"
-                          }
-
-                          stage("Go Live") {
-                              def patch1 = $/oc patch route/bluegreen -p $'{\"spec\":{\"to\":{\"name\":\"${tag}\"}}}$' -n ${project}/$
-                              sh patch1
-                          }
-
-                          stage("Rollback") {
-                              sh "oc get route ${altTag} -n ${project} -o jsonpath='{ .spec.host }' > routehost"
-                              routeHost = readFile('routehost').trim()
-                              def patch2 = $/oc patch route/bluegreen -p $'{\"spec\":{\"to\":{\"name\":\"${altTag}\"}}}$' -n ${
-                                  project
-                              }/$
-                              try {
-                                  input message: "Rollback deployment: http://${routeHost}. Approve?", id: "approval"
-                                  echo "rolling back to ${tag}"
-                                  sh patch2
-                              } catch (error) {
-                                  echo "rollback aborted"
-                              }
-                          }
-                      }
-                  }
-              } catch (err) {
-                  echo "in catch block"
-                  echo "Caught: ${err}"
-                  currentBuild.result = 'FAILURE'
-                  throw err
-              }
+                stage("Rollback") {
+                    steps {
+                        script {
+                            openshift.withProject(env.PROJECT_NAME) {
+                                sh "oc get route ${altTag} -o jsonpath='{ .spec.host }' > routehost"
+                                routeHost = readFile('routehost').trim()
+                                def patch2 = $/oc patch route/bluegreen -p $'{\"spec\":{\"to\":{\"name\":\"${altTag}\"}}}$'/$
+                                try {
+                                    input message: "Rollback deployment: http://${routeHost}. Approve?", id: "approval"
+                                    echo "rolling back to ${tag}"
+                                    sh patch2
+                                } catch (error) {
+                                    echo "rollback aborted"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     type: JenkinsPipeline
   triggers:
   - github:
