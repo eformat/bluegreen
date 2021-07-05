@@ -7,7 +7,7 @@ Deploy from OSEv3.
 ## new project and blue app from master
 
     oc new-project bluegreen --display-name="Blue Green" --description='Blue Green Deployments'
-    oc new-app https://github.com/devops-with-openshift/bluegreen#master --name=blue --strategy=sti
+    oc new-app https://github.com/devops-with-openshift/bluegreen#master --name=blue
 
 ## expose bluegreen service (using blue)
 
